@@ -1,0 +1,146 @@
+// schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User model: both students and admins
+model User {
+  id            Int               @id @default(autoincrement())
+  name          String
+  username      String            @unique
+  phoneNumber String?  // optional, can store "0990807060"
+  email         String            @unique
+  password      String
+  role          Role
+  createdAt     DateTime          @default(now())
+ passwordUpdatedAt DateTime  @default(now())
+
+  usernameHist  UsernameHistory[] // track username changes
+  subscriptions Subscription[]
+  progress      Progress[]
+  videoAccesses VideoAccess[]
+  noteAccesses  NoteAccess[]
+}
+
+// Enum for role
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+// Keep track of username changes for students (only username is tracked)
+model UsernameHistory {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  oldName   String
+  newName   String
+  changedAt DateTime @default(now())
+}
+
+// Courses divided into phases
+model Course {
+  id            Int            @id @default(autoincrement())
+  title         String    @unique
+  phase         Phase
+  months        Int // number of months in the phase
+  videos        Video[]
+  monthsList    Month[]
+  subscriptions Subscription[]
+}
+
+// Enum for course phases
+enum Phase {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+// Each month in course has weeks
+model Month {
+  id       Int    @id @default(autoincrement())
+  course   Course @relation(fields: [courseId], references: [id])
+  courseId Int
+  monthNum Int // 1,2,... total months
+  weeks    Week[]
+}
+
+// Weeks in a month
+model Week {
+  id      Int     @id @default(autoincrement())
+  month   Month   @relation(fields: [monthId], references: [id])
+  monthId Int
+  weekNum Int // 1..4
+  videos  Video[]
+  notes   Note[]
+}
+
+// Video links (YouTube)
+model Video {
+  id       Int           @id @default(autoincrement())
+  title    String
+  url      String
+  week     Week          @relation(fields: [weekId], references: [id])
+  weekId   Int
+  courseId Int?
+  access   VideoAccess[] // track which students can access
+  progress Progress[] // student progress
+  course   Course?       @relation(fields: [courseId], references: [id])
+}
+
+// Optional notes (PDF links)
+model Note {
+  id     Int          @id @default(autoincrement())
+  title  String
+  url    String // could be PDF link
+  week   Week         @relation(fields: [weekId], references: [id])
+  weekId Int
+  access NoteAccess[] // track which students can access
+}
+
+// Track which students can access videos (monthly subscription)
+model VideoAccess {
+  id      Int   @id @default(autoincrement())
+  video   Video @relation(fields: [videoId], references: [id])
+  videoId Int
+  user    User  @relation(fields: [userId], references: [id])
+  userId  Int
+}
+
+// Track which students can access notes
+model NoteAccess {
+  id     Int  @id @default(autoincrement())
+  note   Note @relation(fields: [noteId], references: [id])
+  noteId Int
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+}
+
+// Track student progress per video
+model Progress {
+  id        Int       @id @default(autoincrement())
+  user      User      @relation(fields: [userId], references: [id])
+  userId    Int
+  video     Video     @relation(fields: [videoId], references: [id])
+  videoId   Int
+  watched   Boolean   @default(false)
+  watchedAt DateTime?
+}
+
+// Subscriptions for monthly access control
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  Int
+  month     Int // which month this subscription grants access to
+  paid      Boolean  @default(false)
+  grantedAt DateTime @default(now())
+}
