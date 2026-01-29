@@ -27,10 +27,10 @@ export default function Header() {
         {/* Desktop menu */}
         <nav className="hidden md:flex items-center space-x-4 md:space-x-6 lg:space-x-8 text-white text-lg font-medium">
           <Link href="/">Home</Link>
-          <Link href="/about">About</Link>
-          <Link href="/contact">Contact</Link>
+          <Link href="#about">About</Link>
+          <Link href="#contact">Contact</Link>
           <Link
-            href="/login"
+            href="/admin-login"
             className="px-4 py-2 border border-white rounded-lg hover:bg-white hover:text-[#0B0E48] transition duration-300"
           >
             Login
@@ -53,7 +53,7 @@ export default function Header() {
           <Link href="/about">About</Link>
           <Link href="/contact">Contact</Link>
           <Link
-            href="/login"
+            href="/admin-login"
             className="px-4 py-2 border border-white rounded-lg hover:bg-white hover:text-[#0B0E48] transition duration-300"
           >
             Login
