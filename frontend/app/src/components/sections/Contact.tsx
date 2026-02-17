@@ -27,22 +27,39 @@ export default function Contact() {
 
         {/* Contact Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-left">
-          <div className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300">
+          <a
+            href="tel:+251982044940"
+            className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300"
+          >
             <FaPhoneAlt className="text-[#0B0E48] text-2xl" />
-            <span className="text-lg md:text-xl">+251 912 345 678</span>
-          </div>
-          <div className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300">
+            <span className="text-lg md:text-xl">+251 982 044 940</span>
+          </a>
+
+          <a
+            href="mailto:sistara2026@gmail.com"
+            className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300"
+          >
             <FaEnvelope className="text-[#0B0E48] text-2xl" />
-            <span className="text-lg md:text-xl">contact@sistara.com</span>
-          </div>
-          <div className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300">
+            <span className="text-lg md:text-xl">sistara2026@gmail.com</span>
+          </a>
+          <a
+            href="https://t.me/Sistara_edtech"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300"
+          >
             <FaTelegramPlane className="text-[#0B0E48] text-2xl" />
-            <span className="text-lg md:text-xl">@SistaraEdu</span>
-          </div>
-          <div className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300">
+            <span className="text-lg md:text-xl">@Sistara_edtech</span>
+          </a>
+          <a
+            href="https://wa.me/251982044940"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-4 hover:translate-x-1 transition-transform duration-300"
+          >
             <FaWhatsapp className="text-[#0B0E48] text-2xl" />
-            <span className="text-lg md:text-xl">+251 912 345 678</span>
-          </div>
+            <span className="text-lg md:text-xl">+251 982 044 940</span>
+          </a>
         </div>
       </div>
     </section>

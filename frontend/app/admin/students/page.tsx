@@ -7,32 +7,39 @@ import { api } from "../../src/lib/api";
 /* ================= TYPES ================= */
 type Week = boolean;
 type Month = { paid: boolean; weeks: Week[] };
-type CourseName = "Frontend" | "Backend" | "Fullstack";
-
+type CourseName = "Beginner" | "Frontend" | "Backend" | "Fullstack";
 type PhaseName = "Beginner" | "Intermediate" | "Advanced";
-type CoursePhase = `${CourseName}-${PhaseName}` | "Beginner";
+type CoursePhase =
+  | "Beginner"
+  | "Frontend-Intermediate"
+  | "Frontend-Advanced"
+  | "Backend-Intermediate"
+  | "Backend-Advanced"
+  | "Fullstack-Intermediate"
+  | "Fullstack-Advanced";
 
 type Subscription = { courseId: number; month: number; paid: boolean };
 
 type Student = {
   id: number;
   username: string;
-  password: string;
+  password?: string;
   name: string;
   email: string;
-  phone: string;
-  status: "Active" | "Inactive";
-  courses: CourseName[];
+  phoneNumber: string;
+  status: "ACTIVE" | "INACTIVE";
+  specialization: CourseName | null;
   access: Record<CoursePhase, Month[]>;
   subscriptions?: Subscription[];
 };
+type Course = { id: number; title: CourseName; phases: PhaseName[] };
 
 type FormFields =
   | "username"
   | "password"
   | "name"
   | "email"
-  | "phone"
+  | "phoneNumber"
   | "status";
 
 /* ================= HELPERS ================= */
@@ -42,46 +49,29 @@ const createMonths = (num: number): Month[] =>
     weeks: [false, false, false, false],
   }));
 
-const coursePhaseMap: Record<string, CoursePhase> = {
-  BEGINNER: "Beginner",
-  FRONTEND_INTERMEDIATE: "Frontend-Intermediate",
-  FRONTEND_ADVANCED: "Frontend-Advanced",
-  BACKEND_INTERMEDIATE: "Backend-Intermediate",
-  BACKEND_ADVANCED: "Backend-Advanced",
-  FULLSTACK_INTERMEDIATE: "Fullstack-Intermediate",
-  FULLSTACK_ADVANCED: "Fullstack-Advanced",
-};
-
 const mapSubscriptionsToAccess = (
-  subscriptions: Subscription[],
-  courses: { id: number; phase: string; course: CourseName }[],
-  studentCourses: CourseName[], // <-- pass selected courses
+  subscriptions: Subscription[] = [],
+  courses: Course[] = [],
+  studentCourses: CourseName[] = [],
 ): Record<CoursePhase, Month[]> => {
-  // Initialize access with Beginner
   const access: Record<CoursePhase, Month[]> = {
-    Beginner: createMonths(4),
-
-    "Frontend-Beginner": [],
+    Beginner: createMonths(4), // 4 months for beginner phase
     "Frontend-Intermediate": [],
     "Frontend-Advanced": [],
-
-    "Backend-Beginner": [],
     "Backend-Intermediate": [],
     "Backend-Advanced": [],
-
-    "Fullstack-Beginner": [],
     "Fullstack-Intermediate": [],
     "Fullstack-Advanced": [],
   };
 
-  // Add only the tracks the student selected
+  // Assign months for each specialization phase
   studentCourses.forEach((c) => {
     if (c === "Frontend") {
-      access["Frontend-Intermediate"] = createMonths(1);
-      access["Frontend-Advanced"] = createMonths(1);
+      access["Frontend-Intermediate"] = createMonths(1); // 1 months
+      access["Frontend-Advanced"] = createMonths(1); // 1 months
     }
     if (c === "Backend") {
-      access["Backend-Intermediate"] = createMonths(1);
+      access["Backend-Intermediate"] = createMonths(2);
       access["Backend-Advanced"] = createMonths(1);
     }
     if (c === "Fullstack") {
@@ -90,19 +80,14 @@ const mapSubscriptionsToAccess = (
     }
   });
 
-  // Map actual subscription payments
+  // Map subscriptions to access
   subscriptions.forEach((sub) => {
     const course = courses.find((c) => c.id === sub.courseId);
-    if (!course) return;
+    if (!course || course.title === "Beginner") return;
 
-    const key =
-      course.phase === "BEGINNER"
-        ? "Beginner"
-        : (`${course.course}-${course.phase}` as CoursePhase);
-
-    if (key && access[key]?.[sub.month - 1]) {
+    const key = `${course.title}-${course.phases[0]}` as CoursePhase;
+    if (access[key]?.[sub.month - 1])
       access[key][sub.month - 1].paid = sub.paid;
-    }
   });
 
   return access;
@@ -111,62 +96,73 @@ const mapSubscriptionsToAccess = (
 /* ================= PAGE ================= */
 export default function StudentManagementPage() {
   const [students, setStudents] = useState<Student[]>([]);
-  const [courses, setCourses] = useState<
-    { id: number; phase: PhaseName; course: CourseName }[]
-  >([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [form, setForm] = useState<Omit<Student, "id" | "access">>({
     username: "",
     password: "",
     name: "",
     email: "",
-    phone: "",
-    status: "Active",
-    courses: ["Fullstack"],
+    phoneNumber: "",
+    status: "ACTIVE",
+    specialization: null,
   });
 
   /* ================= API ================= */
-  const fetchCourses = async () => {
+  const loadData = async () => {
     try {
-      const res =
-        await api.get<{ id: number; phase: string; course: CourseName }[]>(
-          "/api/admin/courses",
-        );
-      // Map backend string to PhaseName
-      const mapped = res.data.map((c) => ({
-        ...c,
-        phase: c.phase as PhaseName,
-      }));
-      setCourses(mapped);
-    } catch (err) {
-      console.error("Failed to fetch courses", err);
-    }
-  };
+      const courseRes = await api.get<Course[]>("/api/admin/courses");
+      setCourses(courseRes.data);
+      const studentRes = await api.get<Student[]>("/api/admin/students");
 
-  const fetchStudents = async () => {
-    try {
-      const res = await api.get<Student[]>("/api/admin/students");
-      const mapped = res.data.map((stu) => ({
+      const mappedStudents = studentRes.data.map((stu) => ({
         ...stu,
         access: mapSubscriptionsToAccess(
           stu.subscriptions ?? [],
-          courses,
-          stu.courses, // <-- selected courses only
+          courseRes.data,
+          stu.specialization ? [stu.specialization] : [], // ✅ convert single value to array
         ),
       }));
-      setStudents(mapped);
+
+      setStudents(mappedStudents);
     } catch (err) {
-      console.error("Failed to fetch students", err);
+      console.error("Failed to load data", err);
     }
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      await fetchCourses(); // ✅ fetch courses first
-      await fetchStudents();
+    let cancelled = false;
+
+    const fetchData = async () => {
+      try {
+        const courseRes = await api.get<Course[]>("/api/admin/courses");
+        const studentRes = await api.get<Student[]>("/api/admin/students");
+
+        if (cancelled) return;
+
+        setCourses(courseRes.data);
+
+        const mappedStudents = studentRes.data.map((stu) => ({
+          ...stu,
+          access: mapSubscriptionsToAccess(
+            stu.subscriptions ?? [],
+            courseRes.data,
+            stu.specialization ? [stu.specialization] : [], // ✅ convert single value to array
+          ),
+        }));
+
+        setStudents(mappedStudents);
+      } catch (err) {
+        console.error("Failed to load data", err);
+      }
     };
-    loadData();
+
+    fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /* ================= HANDLERS ================= */
@@ -181,7 +177,7 @@ export default function StudentManagementPage() {
     if (!form.username || !form.name || !form.email) return;
     try {
       if (editingId) {
-        await api.put(`/api/admin/students?id=${editingId}`, form);
+        await api.put(`/api/admin/students/${editingId}`, form);
       } else {
         await api.post("/api/admin/students", form);
       }
@@ -190,12 +186,12 @@ export default function StudentManagementPage() {
         password: "",
         name: "",
         email: "",
-        phone: "",
-        status: "Active",
-        courses: ["Fullstack"],
+        phoneNumber: "",
+        status: "ACTIVE",
+        specialization: null,
       });
       setEditingId(null);
-      fetchStudents();
+      await loadData();
     } catch (err) {
       console.error("Failed to save student", err);
     }
@@ -203,16 +199,17 @@ export default function StudentManagementPage() {
 
   const handleEdit = (student: Student) => {
     setEditingId(student.id);
-    setExpandedId(student.id);
-    setForm({ ...student });
+    setForm({
+      ...student,
+      specialization: student.specialization ?? null,
+    });
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this student?")) return;
-
     try {
-      await api.delete(`/admin/students/${id}`);
-      fetchStudents();
+      await api.patch(`/api/admin/students/${id}/disable`);
+      await loadData();
     } catch (err) {
       console.error("Failed to delete student", err);
     }
@@ -226,24 +223,44 @@ export default function StudentManagementPage() {
     const student = students.find((s) => s.id === userId);
     if (!student) return;
 
-    const paid = !student.access[coursePhase][monthIndex].paid;
-
-    // Find the course ID
-    const phaseParts = coursePhase.split("-");
-    const courseName = phaseParts[0] as CourseName;
-    const phaseName = phaseParts[1] || "BEGINNER";
-    const course = courses.find(
-      (c) => c.course === courseName && c.phase === phaseName.toUpperCase(),
+    const currentPaid = student.access[coursePhase][monthIndex].paid;
+    const newPaid = !currentPaid; // toggled
+    // Toggle locally
+    setStudents((prev) =>
+      prev.map((s) =>
+        s.id === userId
+          ? {
+              ...s,
+              access: {
+                ...s.access,
+                [coursePhase]: s.access[coursePhase].map((m, i) =>
+                  i === monthIndex ? { ...m, paid: !m.paid } : m,
+                ),
+              },
+            }
+          : s,
+      ),
     );
 
-    if (!course) return console.error("Course not found for", coursePhase);
+    // Persist
+    let courseId: number | null = null;
+    if (coursePhase === "Beginner") {
+      const beginnerCourse = courses.find((c) => c.title === "Beginner");
+      if (!beginnerCourse) return console.error("Beginner course not found");
+      courseId = beginnerCourse.id;
+    } else {
+      const [courseName] = coursePhase.split("-") as [CourseName];
+      const course = courses.find((c) => c.title === courseName);
+      if (!course) return console.error("Course not found for", coursePhase);
+      courseId = course.id;
+    }
+
     try {
-      await api.patch(`/api/admin/subscriptions/${userId}`, {
-        courseId: course.id,
+      await api.patch(`/api/admin/students/subscriptions/${userId}`, {
+        courseId,
         month: monthIndex + 1,
-        paid,
+        paid: newPaid,
       });
-      fetchStudents();
     } catch (err) {
       console.error("Failed to update subscription", err);
     }
@@ -252,18 +269,18 @@ export default function StudentManagementPage() {
   /* ================= UI ================= */
   const renderCoursePhases = (student: Student) => {
     const rows: CoursePhase[] = ["Beginner"];
+    const spec = student.specialization;
 
-    (student.courses || []).forEach((c) => {
-      if (c === "Frontend")
-        rows.push("Frontend-Intermediate", "Frontend-Advanced");
-      if (c === "Backend")
-        rows.push("Backend-Intermediate", "Backend-Advanced");
-      if (c === "Fullstack")
-        rows.push("Fullstack-Intermediate", "Fullstack-Advanced");
-    });
+    if (spec === "Frontend")
+      rows.push("Frontend-Intermediate", "Frontend-Advanced");
+    if (spec === "Backend")
+      rows.push("Backend-Intermediate", "Backend-Advanced");
+    if (spec === "Fullstack")
+      rows.push("Fullstack-Intermediate", "Fullstack-Advanced");
+
     return rows.map((phase) => (
       <div key={phase} className="mb-3">
-        <p className="text-xs font-semibold text-gray-400 mb-1">{phase}</p>
+        <p className="text-xs font-semibold text-[#0B0E48] mb-1">{phase}</p>
         <div className="flex flex-wrap gap-2">
           {student.access[phase]?.map((m, i) => (
             <button
@@ -282,6 +299,7 @@ export default function StudentManagementPage() {
       </div>
     ));
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#050728] via-[#0B0E48] to-[#141866] p-8 space-y-10">
       {/* ===== HEADER ===== */}
@@ -305,10 +323,15 @@ export default function StudentManagementPage() {
         <h2 className="text-xl font-bold mb-4 text-[#0B0E48]">
           {editingId ? "Edit Student" : "Add New Student"}
         </h2>
-
         <div className="grid md:grid-cols-6 gap-4">
           {(
-            ["username", "password", "name", "email", "phone"] as FormFields[]
+            [
+              "username",
+              "password",
+              "name",
+              "email",
+              "phoneNumber",
+            ] as FormFields[]
           ).map((field) => (
             <input
               key={field}
@@ -317,21 +340,48 @@ export default function StudentManagementPage() {
               value={form[field] || ""}
               onChange={handleInputChange}
               placeholder={field.toUpperCase()}
-              className="bg-white/70 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0B0E48]/60 transition"
+              className="bg-white/70 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0B0E48]/60 transition text-[#0B0E48]"
             />
           ))}
-
           <select
             name="status"
             value={form.status}
             onChange={handleInputChange}
-            className="bg-white/70 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0B0E48]/60 transition"
+            className="bg-white/70 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0B0E48]/60 transition text-[#0B0E48]"
           >
             <option>Active</option>
             <option>Inactive</option>
           </select>
+          {/* Specialization checkboxes */}
+          <div className="col-span-full">
+            <p className="font-semibold text-white/80 mb-2">Specializations:</p>
+            <div className="flex gap-4">
+              {(["Frontend", "Backend", "Fullstack"] as CourseName[]).map(
+                (c) => (
+                  <label
+                    key={c}
+                    className="flex items-center gap-1 text-white/80"
+                  >
+                    <input
+                      type="radio"
+                      name="specialization"
+                      value={c}
+                      checked={form.specialization === c}
+                      onChange={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          specialization: c,
+                        }))
+                      }
+                      className="accent-[#0B0E48]"
+                    />
+                    {c}
+                  </label>
+                ),
+              )}
+            </div>
+          </div>
         </div>
-
         <button
           onClick={handleAddOrUpdate}
           className="mt-6 px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-[#0B0E48] to-[#141866] shadow-[0_10px_30px_rgba(11,14,72,0.45)] hover:scale-[1.02] hover:brightness-110 transition"
@@ -357,17 +407,23 @@ export default function StudentManagementPage() {
                 </p>
               </div>
               <span
-                className={`px-3 py-1 rounded-full text-xs font-semibold ${s.status === "Active" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  s.status === "ACTIVE"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-red-100 text-red-700"
+                }`}
               >
                 {s.status}
               </span>
             </div>
-
             <p className="text-sm sm:text-base md:text-lg text-gray-300">
               {s.email}
             </p>
             <p className="text-sm sm:text-base md:text-lg text-gray-400 mb-3">
-              {s.phone}
+              {s.phoneNumber}
+            </p>
+            <p className="text-sm text-gray-300 mb-3">
+              Specializations: {s.specialization ?? "None"}
             </p>
 
             {/* Access Rows */}

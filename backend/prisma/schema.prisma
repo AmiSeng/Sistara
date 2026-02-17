@@ -9,6 +9,18 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum CourseType {
+  FRONTEND
+  BACKEND
+  FULLSTACK
+}
+
+
 // User model: both students and admins
 model User {
   id            Int               @id @default(autoincrement())
@@ -19,13 +31,20 @@ model User {
   password      String
   role          Role
   createdAt     DateTime          @default(now())
+
+    // 🔐 Security
  passwordUpdatedAt DateTime  @default(now())
 
+   // 🧠 Student lifecycle
+  status            UserStatus        @default(ACTIVE)
+  currentPhase      PhaseName         @default(BEGINNER)
+  specialization    CourseType?       // null until beginner completed
+
+  // 📜 Relations
   usernameHist  UsernameHistory[] // track username changes
   subscriptions Subscription[]
-  progress      Progress[]
-  videoAccesses VideoAccess[]
-  noteAccesses  NoteAccess[]
+ progress       LessonProgress[]
+  lessonsAccess  LessonAccess[]
 }
 
 // Enum for role
@@ -33,6 +52,7 @@ enum Role {
   ADMIN
   STUDENT
 }
+
 
 // Keep track of username changes for students (only username is tracked)
 model UsernameHistory {
@@ -43,32 +63,43 @@ model UsernameHistory {
   newName   String
   changedAt DateTime @default(now())
 }
-
-// Courses divided into phases
-model Course {
-  id            Int            @id @default(autoincrement())
-  title         String    @unique
-  phase         Phase
-  months        Int // number of months in the phase
-  videos        Video[]
-  monthsList    Month[]
-  subscriptions Subscription[]
+// 1️⃣ Phase model
+model Phase {
+  id        Int       @id @default(autoincrement())
+  name      PhaseName
+  courseId  Int
+  course    Course    @relation(fields: [courseId], references: [id])
+  months    Month[]   @relation("PhaseMonths")   // add explicit relation name
 }
 
-// Enum for course phases
-enum Phase {
+enum PhaseName {
   BEGINNER
   INTERMEDIATE
   ADVANCED
 }
 
+// 2️⃣ Course adjustment
+model Course {
+  id            Int            @id @default(autoincrement())
+  title         String         @unique
+  months        Int
+  monthsList    Month[]        @relation("CourseMonths")   // ✅ same name
+  subscriptions Subscription[]
+  phases        Phase[]
+  lessons Lesson[]  // NEW relation
+}
+
 // Each month in course has weeks
 model Month {
-  id       Int    @id @default(autoincrement())
-  course   Course @relation(fields: [courseId], references: [id])
-  courseId Int
-  monthNum Int // 1,2,... total months
-  weeks    Week[]
+  id        Int     @id @default(autoincrement())
+  monthNum  Int
+  phaseId   Int
+  phase     Phase   @relation("PhaseMonths", fields: [phaseId], references: [id])
+
+  courseId  Int?    
+  course    Course? @relation("CourseMonths", fields: [courseId], references: [id])  // ✅ same name
+
+  weeks     Week[]
 }
 
 // Weeks in a month
@@ -77,61 +108,46 @@ model Week {
   month   Month   @relation(fields: [monthId], references: [id])
   monthId Int
   weekNum Int // 1..4
-  videos  Video[]
-  notes   Note[]
+  lessons Lesson[]  // NEW relation
 }
-
-// Video links (YouTube)
-model Video {
-  id       Int           @id @default(autoincrement())
-  title    String
-  url      String
-  week     Week          @relation(fields: [weekId], references: [id])
-  weekId   Int
-  courseId Int?
-  access   VideoAccess[] // track which students can access
-  progress Progress[] // student progress
-  course   Course?       @relation(fields: [courseId], references: [id])
-}
-
-// Optional notes (PDF links)
-model Note {
-  id     Int          @id @default(autoincrement())
-  title  String
-  url    String // could be PDF link
-  week   Week         @relation(fields: [weekId], references: [id])
-  weekId Int
-  access NoteAccess[] // track which students can access
-}
-
-// Track which students can access videos (monthly subscription)
-model VideoAccess {
-  id      Int   @id @default(autoincrement())
-  video   Video @relation(fields: [videoId], references: [id])
-  videoId Int
-  user    User  @relation(fields: [userId], references: [id])
-  userId  Int
-}
-
-// Track which students can access notes
-model NoteAccess {
-  id     Int  @id @default(autoincrement())
-  note   Note @relation(fields: [noteId], references: [id])
-  noteId Int
-  user   User @relation(fields: [userId], references: [id])
-  userId Int
-}
-
-// Track student progress per video
-model Progress {
+// ======================= LESSON MODEL =======================
+model Lesson {
   id        Int       @id @default(autoincrement())
-  user      User      @relation(fields: [userId], references: [id])
-  userId    Int
-  video     Video     @relation(fields: [videoId], references: [id])
-  videoId   Int
-  watched   Boolean   @default(false)
-  watchedAt DateTime?
+  title     String
+  weekId    Int
+  week      Week      @relation(fields: [weekId], references: [id])
+
+  courseId  Int
+  course    Course    @relation(fields: [courseId], references: [id])
+
+  videoLinks String[]  // array of YouTube/private URLs
+  notesUrls  String[]  // array of PDF/file URLs
+
+  access    LessonAccess[]   // which students can access
+  progress  LessonProgress[] // track completion
 }
+
+// Track student access to each lesson
+model LessonAccess {
+  id       Int    @id @default(autoincrement())
+  lesson   Lesson @relation(fields: [lessonId], references: [id])
+  lessonId Int
+  user     User   @relation(fields: [userId], references: [id])
+  userId   Int
+}
+
+// Track student progress per lesson
+model LessonProgress {
+  id            Int      @id @default(autoincrement())
+  user          User     @relation(fields: [userId], references: [id])
+  userId        Int
+  lesson        Lesson   @relation(fields: [lessonId], references: [id])
+  lessonId      Int
+  videosWatched Boolean   @default(false)
+  notesRead     Boolean   @default(false)
+  updatedAt     DateTime  @default(now()) @updatedAt
+}
+
 
 // Subscriptions for monthly access control
 model Subscription {

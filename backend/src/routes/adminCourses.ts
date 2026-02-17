@@ -1,18 +1,10 @@
-// routes/adminCourses.ts
 import { Router } from "express";
-import { prisma } from "../prisma"; // adjust the path if needed
+import { adminAuth } from "../middleware/adminAuth";
+import { getCourses } from "../controllers/adminCoursesController";
 
-export const adminCoursesRouter = Router();
+const router = Router();
 
-// GET /api/admin/courses
-adminCoursesRouter.get("/", async (req, res) => {
-  try {
-    const courses = await prisma.course.findMany({
-      select: { id: true, phase: true },
-    });
-    res.json(courses);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch courses" });
-  }
-});
+// GET all courses with phases
+router.get("/", adminAuth, getCourses);
+
+export default router;

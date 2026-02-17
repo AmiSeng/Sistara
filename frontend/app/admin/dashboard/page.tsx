@@ -8,7 +8,7 @@ import {
   FaLayerGroup,
   FaPlayCircle,
 } from "react-icons/fa";
-import Footer from "../src/components/layout/Footer";
+import Footer from "../../src/components/layout/Footer";
 
 const metrics = [
   { label: "Total Students", value: 120, icon: <FaUsers /> },
