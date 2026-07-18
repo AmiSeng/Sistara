@@ -3,12 +3,14 @@ import { useState, useEffect } from "react";
 import { FaUserShield, FaLock, FaEye, FaEyeSlash } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
 import axios from "axios";
+import { api } from "../../src/lib/api";
+import { useRouter } from "next/navigation";
 
 type Profile = {
   name: string;
   username: string;
   email: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   role: string;
 };
 
@@ -19,11 +21,14 @@ type Passwords = {
 };
 
 export default function AdminProfile() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [profile, setProfile] = useState<Profile>({
     name: "",
     username: "",
     email: "",
-    phoneNumber: "",
+    phoneNumber: null,
     role: "ADMIN",
   });
 
@@ -42,22 +47,20 @@ export default function AdminProfile() {
   const [focusedInput, setFocusedInput] = useState<
     keyof Profile | keyof Passwords | null
   >(null);
-
+  const router = useRouter();
   // Fetch admin profile on mount
   useEffect(() => {
     const fetchProfile = async () => {
       const token = localStorage.getItem("adminToken");
-      if (!token) {
-        toast.error("Please login");
-        window.location.href = "/admin-login";
+      const admin = localStorage.getItem("admin");
+
+      if (!token || !admin) {
+        router.push("/admin/login");
         return;
       }
 
       try {
-        const res = await axios.get("http://localhost:5000/api/admin/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+        const res = await api.get("/api/admin/me");
         setProfile(res.data);
       } catch (error: unknown) {
         if (axios.isAxiosError(error)) {
@@ -67,10 +70,22 @@ export default function AdminProfile() {
         } else {
           toast.error("Unexpected error");
         }
+
+        // If token expired or invalid
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          localStorage.removeItem("adminToken");
+          localStorage.removeItem("admin");
+          router.push("/admin/login");
+        }
+      } finally {
+        setLoading(false);
       }
     };
+
     fetchProfile();
-  }, []);
+  }, [router]);
+
+  if (loading) return null;
 
   // Handle profile field change
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,20 +95,15 @@ export default function AdminProfile() {
 
   // Save profile
   const saveProfile = async () => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) return toast.error("Unauthorized");
+    setSaving(true);
 
     try {
-      const res = await axios.put(
-        "http://localhost:5000/api/admin/profile",
-        {
-          name: profile.name,
-          username: profile.username,
-          email: profile.email,
-          phoneNumber: profile.phoneNumber,
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const res = await api.put("/api/admin/profile", {
+        name: profile.name,
+        username: profile.username,
+        email: profile.email,
+        phoneNumber: profile.phoneNumber,
+      });
 
       setProfile(res.data);
       toast.success("Profile updated successfully!");
@@ -103,36 +113,46 @@ export default function AdminProfile() {
       } else {
         toast.error("Unexpected error");
       }
+    } finally {
+      setSaving(false);
     }
   };
 
   // Update password
   const updatePassword = async () => {
+    if (!passwords.current || !passwords.new || !passwords.confirm) {
+      return toast.error("Please fill all password fields");
+    }
+
     if (passwords.new !== passwords.confirm) {
       return toast.error("Passwords do not match!");
     }
 
-    const token = localStorage.getItem("adminToken");
-    if (!token) return toast.error("Unauthorized");
+    setChangingPassword(true);
 
     try {
-      await axios.put(
-        "http://localhost:5000/api/admin/password",
-        { currentPassword: passwords.current, newPassword: passwords.new },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      await api.put("/api/admin/password", {
+        currentPassword: passwords.current,
+        newPassword: passwords.new,
+      });
 
-      setPasswords({ current: "", new: "", confirm: "" });
+      setPasswords({
+        current: "",
+        new: "",
+        confirm: "",
+      });
+
       toast.success("Password updated successfully!");
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Error updating password");
+        toast.error(error.response?.data?.message || "Password update failed");
       } else {
         toast.error("Unexpected error");
       }
+    } finally {
+      setChangingPassword(false);
     }
   };
-
   const togglePassword = (key: keyof typeof showPassword) => {
     setShowPassword({ ...showPassword, [key]: !showPassword[key] });
   };
@@ -158,8 +178,7 @@ export default function AdminProfile() {
     "relative rounded-3xl bg-white/20 backdrop-blur-xl shadow-[0_25px_100px_rgba(11,14,72,0.35)] hover:shadow-[0_35px_120px_rgba(11,14,72,0.4)] transition p-10 space-y-8 w-full max-w-6xl mx-auto transform hover:scale-[1.05] motion-safe:duration-300 hover:bg-white/30";
 
   const buttonClass =
-    "rounded-2xl bg-gradient-to-r from-[#0B0E48] to-[#141866] px-10 py-4 text-white font-semibold shadow-[0_10px_40px_rgba(11,14,72,0.5)] hover:shadow-[0_15px_50px_rgba(11,14,72,0.7)] hover:brightness-110 hover:scale-[1.05] motion-safe:duration-300 transition";
-
+    "rounded-2xl bg-gradient-to-r from-[#0B0E48] to-[#141866] px-10 py-4 text-white font-semibold shadow-[0_10px_40px_rgba(11,14,72,0.5)] hover:shadow-[0_15px_50px_rgba(11,14,72,0.7)] hover:brightness-110 hover:scale-[1.05] transition disabled:opacity-50 disabled:cursor-not-allowed";
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#050728] via-[#0B0E48] to-[#141866] p-8 space-y-10">
       <Toaster position="top-right" reverseOrder={false} />
@@ -199,7 +218,7 @@ export default function AdminProfile() {
               <input
                 type="text"
                 name={key}
-                value={profile[key]}
+                value={profile[key] ?? ""}
                 onChange={handleProfileChange}
                 placeholder=" "
                 onFocus={() => setFocusedInput(key)}
@@ -208,7 +227,8 @@ export default function AdminProfile() {
               />
               <label
                 className={labelClass(
-                  profile[key] !== "" || focusedInput === key,
+                  (profile[key] !== null && profile[key] !== "") ||
+                    focusedInput === key,
                 )}
               >
                 {key}
@@ -226,8 +246,8 @@ export default function AdminProfile() {
           </div>
         </div>
 
-        <button onClick={saveProfile} className={buttonClass}>
-          Save Profile Changes
+        <button disabled={saving} onClick={saveProfile} className={buttonClass}>
+          {saving ? "Saving..." : "Save Profile Changes"}
         </button>
       </div>
 
@@ -269,8 +289,12 @@ export default function AdminProfile() {
           ))}
         </div>
 
-        <button onClick={updatePassword} className={buttonClass}>
-          Update Password
+        <button
+          disabled={changingPassword}
+          onClick={updatePassword}
+          className={buttonClass}
+        >
+          {changingPassword ? "Updating..." : "Update Password"}
         </button>
       </div>
     </div>

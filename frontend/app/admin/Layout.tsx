@@ -1,12 +1,21 @@
 "use client";
 import { ReactNode, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { FaUsers, FaBook, FaUserCog, FaChartBar } from "react-icons/fa";
 import { useAdminAuth } from "../src/hooks/useAdminAuth";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   useAdminAuth();
+
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const handleLogout = () => {
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("role");
+    router.push("/admin/login");
+  };
 
   const menuItems = [
     { label: "Dashboard", href: "/admin/dashboard", icon: <FaChartBar /> },
@@ -53,7 +62,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="p-6 border-t">
-          <button className="w-full bg-[#0B0E48] text-white py-2 rounded-xl hover:brightness-110 transition-all duration-300">
+          <button
+            onClick={handleLogout}
+            className="w-full bg-[#0B0E48] text-white py-2 rounded-xl hover:brightness-110 transition-all duration-300"
+          >
             Logout
           </button>
         </div>

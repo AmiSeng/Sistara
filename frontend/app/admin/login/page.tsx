@@ -8,6 +8,7 @@ export default function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,13 +18,17 @@ export default function AdminLogin() {
       return;
     }
     setError("");
+    setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/admin/login`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        },
+      );
 
       const data = await res.json();
 
@@ -34,12 +39,14 @@ export default function AdminLogin() {
 
       // ✅ Store admin token for dashboard
       localStorage.setItem("adminToken", data.token);
-
+      localStorage.setItem("admin", JSON.stringify(data.admin));
       // ✅ Redirect after storing token
-      router.push("/dashboard");
+      router.push("/admin/dashboard");
     } catch (err) {
       console.error(err);
       setError("Server error. Try again later.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,6 +83,7 @@ export default function AdminLogin() {
             <input
               type="text"
               placeholder="Username"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 text-lg text-[#0B0E48] placeholder-gray-400 border-2 border-gray-300 rounded-xl focus:border-[#0B0E48] focus:ring-4 focus:ring-[#0B0E48]/40 focus:outline-none transition-all duration-300 shadow-inner"
@@ -87,6 +95,7 @@ export default function AdminLogin() {
             <input
               type="password"
               placeholder="Password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-3 text-lg text-[#0B0E48] placeholder-gray-400 border-2 border-gray-300 rounded-xl focus:border-[#0B0E48] focus:ring-4 focus:ring-[#0B0E48]/40 focus:outline-none transition-all duration-300 shadow-inner"
@@ -96,9 +105,16 @@ export default function AdminLogin() {
           {/* Login Button */}
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-[#0B0E48] to-[#05073f] text-white py-3 rounded-xl text-lg font-semibold shadow-lg hover:scale-105 hover:shadow-2xl hover:brightness-110 transition-all duration-300"
+            disabled={loading}
+            className={`w-full py-3 rounded-xl text-lg font-semibold shadow-lg transition-all duration-300
+${
+  loading
+    ? "bg-gray-400 cursor-not-allowed"
+    : "bg-gradient-to-r from-[#0B0E48] to-[#05073f] hover:scale-105 hover:shadow-2xl hover:brightness-110"
+}
+text-white`}
           >
-            Login
+            {loading ? "Logging in..." : "Login"}
           </button>
 
           <p className="text-center text-gray-600 mt-2 text-sm">

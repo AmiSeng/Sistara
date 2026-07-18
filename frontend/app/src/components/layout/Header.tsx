@@ -30,7 +30,7 @@ export default function Header() {
           <Link href="#about">About</Link>
           <Link href="#contact">Contact</Link>
           <Link
-            href="/admin-login"
+            href="login"
             className="px-4 py-2 border border-white rounded-lg hover:bg-white hover:text-[#0B0E48] transition duration-300"
           >
             Login
@@ -53,7 +53,7 @@ export default function Header() {
           <Link href="/about">About</Link>
           <Link href="/contact">Contact</Link>
           <Link
-            href="/admin-login"
+            href="/login"
             className="px-4 py-2 border border-white rounded-lg hover:bg-white hover:text-[#0B0E48] transition duration-300"
           >
             Login

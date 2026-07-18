@@ -20,31 +20,33 @@ enum CourseType {
   FULLSTACK
 }
 
-
 // User model: both students and admins
 model User {
-  id            Int               @id @default(autoincrement())
-  name          String
-  username      String            @unique
-  phoneNumber String?  // optional, can store "0990807060"
-  email         String            @unique
-  password      String
-  role          Role
-  createdAt     DateTime          @default(now())
+  id             Int             @id @default(autoincrement())
+  name           String
+  username       String          @unique
+  phoneNumber    String? // optional, can store "0990807060"
+  email          String          @unique
+  password       String
+  role           Role
+  createdAt      DateTime        @default(now())
+  passwordResets PasswordReset[]
 
-    // 🔐 Security
- passwordUpdatedAt DateTime  @default(now())
+  // 🔐 Security
+  passwordUpdatedAt DateTime @default(now())
 
-   // 🧠 Student lifecycle
-  status            UserStatus        @default(ACTIVE)
-  currentPhase      PhaseName         @default(BEGINNER)
-  specialization    CourseType?       // null until beginner completed
+  // 🧠 Student lifecycle
+  status         UserStatus  @default(ACTIVE)
+  currentPhase   PhaseName   @default(BEGINNER)
+  specialization CourseType? // null until beginner completed
 
   // 📜 Relations
-  usernameHist  UsernameHistory[] // track username changes
-  subscriptions Subscription[]
- progress       LessonProgress[]
-  lessonsAccess  LessonAccess[]
+  usernameHist    UsernameHistory[] // track username changes
+  subscriptions   Subscription[]
+  progress        LessonProgress[]
+  lessonsAccess   LessonAccess[]
+  Transaction     Transaction[]
+  MonthCompletion MonthCompletion[]
 }
 
 // Enum for role
@@ -53,6 +55,15 @@ enum Role {
   STUDENT
 }
 
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
 
 // Keep track of username changes for students (only username is tracked)
 model UsernameHistory {
@@ -63,13 +74,14 @@ model UsernameHistory {
   newName   String
   changedAt DateTime @default(now())
 }
+
 // 1️⃣ Phase model
 model Phase {
-  id        Int       @id @default(autoincrement())
-  name      PhaseName
-  courseId  Int
-  course    Course    @relation(fields: [courseId], references: [id])
-  months    Month[]   @relation("PhaseMonths")   // add explicit relation name
+  id       Int       @id @default(autoincrement())
+  name     PhaseName
+  courseId Int
+  course   Course    @relation(fields: [courseId], references: [id])
+  months   Month[]   @relation("PhaseMonths") // add explicit relation name
 }
 
 enum PhaseName {
@@ -80,57 +92,57 @@ enum PhaseName {
 
 // 2️⃣ Course adjustment
 model Course {
-  id            Int            @id @default(autoincrement())
-  title         String         @unique
-  months        Int
-  monthsList    Month[]        @relation("CourseMonths")   // ✅ same name
+  id     Int    @id @default(autoincrement())
+  title  String @unique
+  months Int
+
   subscriptions Subscription[]
   phases        Phase[]
-  lessons Lesson[]  // NEW relation
+  lessons       Lesson[] // NEW relation
 }
 
 // Each month in course has weeks
 model Month {
-  id        Int     @id @default(autoincrement())
-  monthNum  Int
-  phaseId   Int
-  phase     Phase   @relation("PhaseMonths", fields: [phaseId], references: [id])
+  id       Int   @id @default(autoincrement())
+  monthNum Int
+  phaseId  Int
+  phase    Phase @relation("PhaseMonths", fields: [phaseId], references: [id])
 
-  courseId  Int?    
-  course    Course? @relation("CourseMonths", fields: [courseId], references: [id])  // ✅ same name
-
-  weeks     Week[]
+  weeks           Week[]
+  Transaction     Transaction[]
+  MonthCompletion MonthCompletion[]
 }
 
 // Weeks in a month
 model Week {
-  id      Int     @id @default(autoincrement())
-  month   Month   @relation(fields: [monthId], references: [id])
+  id      Int      @id @default(autoincrement())
+  month   Month    @relation(fields: [monthId], references: [id])
   monthId Int
   weekNum Int // 1..4
-  lessons Lesson[]  // NEW relation
+  lessons Lesson[] // NEW relation
 }
+
 // ======================= LESSON MODEL =======================
 model Lesson {
-  id        Int       @id @default(autoincrement())
-  title     String
-  weekId    Int
-  week      Week      @relation(fields: [weekId], references: [id])
+  id     Int    @id @default(autoincrement())
+  title  String
+  weekId Int
+  week   Week   @relation(fields: [weekId], references: [id])
 
-  courseId  Int
-  course    Course    @relation(fields: [courseId], references: [id])
+  courseId Int
+  course   Course @relation(fields: [courseId], references: [id])
 
-  videoLinks String[]  // array of YouTube/private URLs
-  notesUrls  String[]  // array of PDF/file URLs
+  videoLinks String[] // array of YouTube/private URLs
+  notesUrls  String[] // array of PDF/file URLs
 
-  access    LessonAccess[]   // which students can access
-  progress  LessonProgress[] // track completion
+  access   LessonAccess[] // which students can access
+  progress LessonProgress[] // track completion
 }
 
 // Track student access to each lesson
 model LessonAccess {
   id       Int    @id @default(autoincrement())
-  lesson   Lesson @relation(fields: [lessonId], references: [id])
+  lesson   Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   lessonId Int
   user     User   @relation(fields: [userId], references: [id])
   userId   Int
@@ -141,22 +153,79 @@ model LessonProgress {
   id            Int      @id @default(autoincrement())
   user          User     @relation(fields: [userId], references: [id])
   userId        Int
-  lesson        Lesson   @relation(fields: [lessonId], references: [id])
+  lesson        Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   lessonId      Int
-  videosWatched Boolean   @default(false)
-  notesRead     Boolean   @default(false)
-  updatedAt     DateTime  @default(now()) @updatedAt
+  videosWatched Boolean  @default(false)
+  notesRead     Boolean  @default(false)
+  updatedAt     DateTime @default(now()) @updatedAt
 }
-
 
 // Subscriptions for monthly access control
 model Subscription {
-  id        Int      @id @default(autoincrement())
-  user      User     @relation(fields: [userId], references: [id])
-  userId    Int
-  course    Course   @relation(fields: [courseId], references: [id])
-  courseId  Int
-  month     Int // which month this subscription grants access to
-  paid      Boolean  @default(false)
+  id Int @id @default(autoincrement())
+
+  userId Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  courseId Int
+  course Course @relation(fields: [courseId], references: [id])
+
+  month Int
+
+  paid Boolean @default(false)
+
   grantedAt DateTime @default(now())
+
+  @@unique([userId, courseId, month])
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Transaction {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  monthId Int
+  month   Month @relation(fields: [monthId], references: [id])
+
+  cohortId Int
+  cohort   Cohort @relation(fields: [cohortId], references: [id])
+
+  status     PaymentStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+  reviewedAt DateTime?
+}
+
+model MonthCompletion {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  monthId Int
+  month   Month @relation(fields: [monthId], references: [id])
+
+  cohortId Int
+  cohort   Cohort @relation(fields: [cohortId], references: [id])
+
+  passed      Boolean   @default(false)
+  evaluatedAt DateTime?
+
+  @@unique([userId, monthId, cohortId])
+}
+
+model Cohort {
+  id        Int      @id @default(autoincrement())
+  name      String // e.g. "Summer 2026"
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+
+  completions   MonthCompletion[]
+  transactions  Transaction[]
 }

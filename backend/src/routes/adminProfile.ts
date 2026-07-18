@@ -5,26 +5,24 @@ import {
   isValidName,
   isValidEmail,
   isValidEthiopianPhone,
-  isStrongPassword,
+  isStrongPassword
 } from "../utils/validator";
 import { comparePassword, hashPassword } from "../utils/security";
+import { AppError } from "../middleware/errorHandler";
 
 const router = Router();
 
 // Update admin profile
-router.put("/profile", adminAuth, async (req: AdminRequest, res) => {
-  const { name, username, email, phoneNumber } = req.body;
-
-  if (!name || !username || !email)
-    return res.status(400).json({ message: "Missing fields" });
-  if (!isValidName(name))
-    return res.status(400).json({ message: "Invalid name" });
-  if (!isValidEmail(email))
-    return res.status(400).json({ message: "Invalid email" });
-  if (phoneNumber && !isValidEthiopianPhone(phoneNumber))
-    return res.status(400).json({ message: "Invalid Ethiopian phone number" });
-
+router.put("/profile", adminAuth, async (req: AdminRequest, res, next) => {
   try {
+    const { name, username, email, phoneNumber } = req.body;
+
+    if (!name || !username || !email) throw new AppError("Missing fields", 400);
+    if (!isValidName(name)) throw new AppError("Invalid name", 400);
+    if (!isValidEmail(email)) throw new AppError("Invalid email", 400);
+    if (phoneNumber && !isValidEthiopianPhone(phoneNumber))
+      throw new AppError("Invalid Ethiopian phone number", 400);
+
     const updated = await prisma.user.update({
       where: { id: req.admin!.userId },
       data: { name, username, email, phoneNumber },
@@ -34,48 +32,50 @@ router.put("/profile", adminAuth, async (req: AdminRequest, res) => {
         username: true,
         email: true,
         phoneNumber: true,
-        role: true,
-      },
+        role: true
+      }
     });
 
     res.json(updated);
   } catch (err: any) {
     if (err.code === "P2002")
-      return res
-        .status(409)
-        .json({ message: "Username or email already exists" });
-    res.status(500).json({ message: "Server error" });
+      return next(new AppError("Username or email already exists", 409));
+    next(err);
   }
 });
 
 // Change admin password
-router.put("/password", adminAuth, async (req: AdminRequest, res) => {
-  const { currentPassword, newPassword } = req.body;
+router.put("/password", adminAuth, async (req: AdminRequest, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
 
-  if (!currentPassword || !newPassword)
-    return res.status(400).json({ message: "Missing fields" });
-  if (!isStrongPassword(newPassword))
-    return res.status(400).json({
-      message: "Password must be 8+ chars, include upper, lower, number",
+    if (!currentPassword || !newPassword)
+      throw new AppError("Missing fields", 400);
+    if (!isStrongPassword(newPassword))
+      throw new AppError(
+        "Password must be 8+ chars, include upper, lower, number",
+        400
+      );
+
+    const admin = await prisma.user.findUnique({
+      where: { id: req.admin!.userId }
+    });
+    if (!admin) throw new AppError("Admin not found", 404);
+
+    const valid = await comparePassword(currentPassword, admin.password);
+    if (!valid) throw new AppError("Current password incorrect", 401);
+
+    const hashed = await hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: { password: hashed, passwordUpdatedAt: new Date() }
     });
 
-  const admin = await prisma.user.findUnique({
-    where: { id: req.admin!.userId },
-  });
-  if (!admin) return res.status(404).json({ message: "Admin not found" });
-
-  const valid = await comparePassword(currentPassword, admin.password);
-  if (!valid)
-    return res.status(401).json({ message: "Current password incorrect" });
-
-  const hashed = await hashPassword(newPassword);
-
-  await prisma.user.update({
-    where: { id: admin.id },
-    data: { password: hashed, passwordUpdatedAt: new Date() },
-  });
-
-  res.json({ message: "Password updated successfully" });
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

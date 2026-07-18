@@ -1,11 +1,46 @@
 // controllers/adminStudentController.ts
 import { prisma } from "../prisma";
 import bcrypt from "bcrypt";
+import { z } from "zod";
+import { Request, Response, NextFunction } from "express";
+
+/* =========================
+   ZOD SCHEMAS
+========================= */
+export const createStudentSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  username: z.string().min(2, "Username is required"),
+  email: z.string().email("Invalid email"),
+  password: z.string().min(6, "Password must be at least 6 chars"),
+  phoneNumber: z.string().optional()
+});
+
+export const updateStudentSchema = z.object({
+  name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
+  phoneNumber: z.string().optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  specialization: z.enum(["FRONTEND", "BACKEND", "FULLSTACK"]).optional()
+});
+
+export const toggleSubscriptionSchema = z.object({
+  courseId: z.number().refine((v) => !isNaN(v), {
+    message: "Course ID is required and must be a number"
+  }),
+  month: z.number().refine((v) => !isNaN(v), {
+    message: "Month number is required and must be a number"
+  }),
+  paid: z.boolean()
+});
 
 /* =========================
    GET ALL STUDENTS
 ========================= */
-export const getStudents = async (req: any, res: any) => {
+export const getStudents = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const students = await prisma.user.findMany({
       where: { role: "STUDENT", status: "ACTIVE" },
@@ -27,20 +62,25 @@ export const getStudents = async (req: any, res: any) => {
 
     res.json(students);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch students" });
+    next(err);
   }
 };
 
 /* =========================
    CREATE STUDENT
 ========================= */
-export const createStudent = async (req: any, res: any) => {
+export const createStudent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const { name, username, email, password, phoneNumber } = req.body;
+    const parsed = createStudentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.format() });
+    }
 
-    if (!name || !username || !email || !password)
-      return res.status(400).json({ message: "Missing required fields" });
+    const { name, username, email, password, phoneNumber } = parsed.data;
 
     // Check if student already exists
     const existing = await prisma.user.findFirst({
@@ -58,7 +98,7 @@ export const createStudent = async (req: any, res: any) => {
         name,
         username,
         email,
-        phoneNumber,
+        phoneNumber: phoneNumber ?? null,
         password: hashedPassword,
         role: "STUDENT",
         status: "ACTIVE",
@@ -70,109 +110,125 @@ export const createStudent = async (req: any, res: any) => {
     res
       .status(201)
       .json({ message: "Student successfully registered", student });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create student" });
+  } catch (err) {
+    next(err);
   }
 };
 
 /* =========================
    UPDATE STUDENT
 ========================= */
-export const updateStudent = async (req: any, res: any) => {
+export const updateStudent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const id = Number(req.params.id);
-    const { role, name, email, phoneNumber, status, specialization } = req.body;
+
+    const parsed = updateStudentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.format() });
+    }
+
+    const { name, email, phoneNumber, status, specialization } = parsed.data;
+
+    // Build update object safely
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber ?? null;
+    if (status !== undefined) updateData.status = status;
+    if (specialization !== undefined)
+      updateData.specialization = specialization ?? null;
 
     const student = await prisma.user.update({
-      where: { id },
-      data: {
-        name,
-        email,
-        phoneNumber,
-        status,
-        specialization: Array.isArray(specialization)
-          ? (specialization[0] ?? null)
-          : (specialization ?? null)
-      }
+      where: {
+        id,
+        role: "STUDENT"
+      },
+      data: updateData
     });
 
     res.json({ message: "Student updated successfully", student });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to update student" });
+    next(err);
   }
 };
 
 /* =========================
-   DISABLE STUDENT (SOFT DELETE)
+   DISABLE STUDENT
 ========================= */
-export const disableStudent = async (req: any, res: any) => {
+export const disableStudent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const id = Number(req.params.id);
 
-    // Soft delete: mark as inactive
     const student = await prisma.user.update({
-      where: { id },
-      data: { status: "INACTIVE" }
+      where: {
+        id,
+        role: "STUDENT"
+      },
+      data: {
+        status: "INACTIVE"
+      }
     });
 
-    // Remove lesson access
+    // Revoke access
     await prisma.lessonAccess.deleteMany({ where: { userId: id } });
-
-    // Remove progress
     await prisma.lessonProgress.deleteMany({ where: { userId: id } });
 
-    // Mark subscriptions unpaid
+    // Mark subscriptions as unpaid
     await prisma.subscription.updateMany({
       where: { userId: id },
       data: { paid: false }
     });
 
-    res.json({ message: "Student access revoked and disabled", student });
+    res.json({ message: "Student disabled and access revoked", student });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to disable student" });
+    next(err);
   }
 };
+
 /* =========================
-   TOGGLE / UPDATE SUBSCRIPTION
+   MANUAL SUBSCRIPTION / PAYMENT
 ========================= */
-export const toggleSubscription = async (req: any, res: any) => {
+export const toggleSubscription = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const userId = Number(req.params.userId);
-    const { courseId, month, paid } = req.body;
 
-    if (!userId || !courseId || !month) {
-      return res.status(400).json({ message: "Missing required fields" });
+    // Validate input
+    const parsed = toggleSubscriptionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.format() });
     }
 
-    // Check if subscription already exists
+    const { courseId, month, paid } = parsed.data;
+
     let subscription = await prisma.subscription.findFirst({
       where: { userId, courseId, month }
     });
 
     if (subscription) {
-      // Update paid status
       subscription = await prisma.subscription.update({
         where: { id: subscription.id },
         data: { paid }
       });
     } else {
-      // Create new subscription
       subscription = await prisma.subscription.create({
-        data: {
-          userId,
-          courseId,
-          month,
-          paid: paid ?? true
-        }
+        data: { userId, courseId, month, paid }
       });
     }
 
     res.json({ message: "Subscription updated successfully", subscription });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to update subscription" });
+    next(err);
   }
 };

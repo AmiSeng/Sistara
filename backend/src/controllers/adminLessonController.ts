@@ -1,110 +1,150 @@
+import { Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma";
-import { Request, Response } from "express";
+import { AppError } from "../middleware/errorHandler";
+import cloudinary from "../utils/cloudinary";
+import { Readable } from "stream";
 
+const uploadPDF = (file: Express.Multer.File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        folder: "sistara/notes"
+      },
+
+      (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result!.secure_url);
+        }
+      }
+    );
+
+    Readable.from(file.buffer).pipe(stream);
+  });
+};
 // =========================
 // CREATE LESSON
 // =========================
-export const createLesson = async (req: Request, res: Response) => {
+export const createLesson = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
-    const { title, weekId, courseId } = req.body;
-    let videoLinks = req.body.videoLinks || [];
+    const { title, weekId, courseId, videoLinks } = req.body;
 
     if (!title || !weekId || !courseId) {
-      return res.status(400).json({ message: "Missing required fields" });
+      throw new AppError("Missing required fields", 400);
     }
 
-    if (typeof videoLinks === "string") videoLinks = [videoLinks];
+    let videos: string[] = [];
+
+    if (videoLinks) {
+      videos =
+        typeof videoLinks === "string" ? JSON.parse(videoLinks) : videoLinks;
+    }
 
     const files = req.files as Express.Multer.File[] | undefined;
-    const notesUrls = files
-      ? files.map((file) => `/uploads/notes/${file.filename}`)
-      : [];
+
+    let notesUrls: string[] = [];
+
+    if (files && files.length > 0) {
+      notesUrls = await Promise.all(files.map((file) => uploadPDF(file)));
+    }
 
     const lesson = await prisma.lesson.create({
       data: {
         title,
         weekId: Number(weekId),
         courseId: Number(courseId),
-        videoLinks,
+        videoLinks: videos,
         notesUrls
       }
     });
 
-    res.status(201).json(lesson);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Lesson creation failed" });
+    return res.status(201).json(lesson);
+  } catch (error) {
+    next(error);
   }
 };
 
 // =========================
 // ADD VIDEO TO LESSON
 // =========================
-export const addVideoToLesson = async (req: Request, res: Response) => {
+export const addVideoToLesson = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const lessonId = Number(req.params.lessonId);
     const { videoLink } = req.body;
 
-    if (!videoLink)
-      return res.status(400).json({ message: "Video link required" });
+    if (!videoLink) throw new AppError("Video link required", 400);
+    if (isNaN(lessonId)) throw new AppError("Invalid lesson ID", 400);
 
     const lesson = await prisma.lesson.update({
       where: { id: lessonId },
       data: { videoLinks: { push: videoLink } }
     });
 
-    res.json(lesson);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed adding video" });
+    return res.json(lesson);
+  } catch (error) {
+    next(error);
   }
 };
 
 // =========================
 // ADD NOTE TO LESSON
 // =========================
-export const addNoteToLesson = async (req: Request, res: Response) => {
+export const addNoteToLesson = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const lessonId = Number(req.params.lessonId);
+    if (isNaN(lessonId)) throw new AppError("Invalid lesson ID", 400);
 
     const files = req.files as Express.Multer.File[] | undefined;
-    if (!files || files.length === 0) {
-      return res.status(400).json({ message: "No files uploaded" });
-    }
+    if (!files || files.length === 0)
+      throw new AppError("No files uploaded", 400);
 
     const noteUrls = files.map((file) => `/uploads/notes/${file.filename}`);
 
-    const lesson = await prisma.lesson.findUnique({
-      where: { id: lessonId }
-    });
+    const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
+    if (!lesson) throw new AppError("Lesson not found", 404);
 
-    if (!lesson) {
-      return res.status(404).json({ message: "Lesson not found" });
-    }
     const updated = await prisma.lesson.update({
       where: { id: lessonId },
-      data: {
-        notesUrls: [...lesson.notesUrls, ...noteUrls]
-      }
+      data: { notesUrls: [...lesson.notesUrls, ...noteUrls] }
     });
 
-    res.json(lesson);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed uploading notes" });
+    return res.json(updated);
+  } catch (error) {
+    next(error);
   }
 };
 
 // =========================
 // DELETE VIDEO FROM LESSON
 // =========================
-export const deleteVideo = async (req: Request, res: Response) => {
+export const deleteVideo = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const lessonId = Number(req.params.lessonId);
     const { videoLink } = req.body;
 
+    if (!videoLink) throw new AppError("Video link required", 400);
+    if (isNaN(lessonId)) throw new AppError("Invalid lesson ID", 400);
+
     const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    if (!lesson) throw new AppError("Lesson not found", 404);
 
     const updatedVideos = lesson.videoLinks.filter((v) => v !== videoLink);
 
@@ -113,23 +153,29 @@ export const deleteVideo = async (req: Request, res: Response) => {
       data: { videoLinks: updatedVideos }
     });
 
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed deleting video" });
+    return res.json(updated);
+  } catch (error) {
+    next(error);
   }
 };
 
 // =========================
 // DELETE NOTE FROM LESSON
 // =========================
-export const deleteNote = async (req: Request, res: Response) => {
+export const deleteNote = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const lessonId = Number(req.params.lessonId);
     const { noteUrl } = req.body;
 
+    if (!noteUrl) throw new AppError("Note URL required", 400);
+    if (isNaN(lessonId)) throw new AppError("Invalid lesson ID", 400);
+
     const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    if (!lesson) throw new AppError("Lesson not found", 404);
 
     const updatedNotes = lesson.notesUrls.filter((n) => n !== noteUrl);
 
@@ -138,28 +184,84 @@ export const deleteNote = async (req: Request, res: Response) => {
       data: { notesUrls: updatedNotes }
     });
 
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed deleting note" });
+    return res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =========================
+// DELETE ENTIRE LESSON
+// =========================
+export const deleteLesson = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const lessonId = Number(req.params.lessonId);
+
+    if (isNaN(lessonId)) {
+      throw new AppError("Invalid lesson ID", 400);
+    }
+
+    const lesson = await prisma.lesson.findUnique({
+      where: {
+        id: lessonId
+      }
+    });
+
+    if (!lesson) {
+      throw new AppError("Lesson not found", 404);
+    }
+
+    await prisma.$transaction([
+      prisma.lessonAccess.deleteMany({
+        where: {
+          lessonId
+        }
+      }),
+
+      prisma.lessonProgress.deleteMany({
+        where: {
+          lessonId
+        }
+      }),
+
+      prisma.lesson.delete({
+        where: {
+          id: lessonId
+        }
+      })
+    ]);
+
+    return res.json({
+      message: "Lesson deleted successfully"
+    });
+  } catch (error) {
+    next(error);
   }
 };
 
 // =========================
 // GET FULL WEEK CONTENT
 // =========================
-export const getFullWeekContent = async (req: Request, res: Response) => {
+export const getFullWeekContent = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const weekId = Number(req.params.weekId);
+    if (isNaN(weekId)) throw new AppError("Invalid week ID", 400);
 
     const lessons = await prisma.lesson.findMany({
       where: { weekId },
       orderBy: { id: "asc" }
     });
 
-    res.json(lessons);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed fetching week content" });
+    return res.json(lessons);
+  } catch (error) {
+    next(error);
   }
 };

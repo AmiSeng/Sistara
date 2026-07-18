@@ -3,20 +3,21 @@
 import { useState, useEffect } from "react";
 import { FaEdit, FaTrash, FaUserGraduate } from "react-icons/fa";
 import { api } from "../../src/lib/api";
+import { useRouter } from "next/navigation";
 
 /* ================= TYPES ================= */
 type Week = boolean;
 type Month = { paid: boolean; weeks: Week[] };
-type CourseName = "Beginner" | "Frontend" | "Backend" | "Fullstack";
+type CourseName = "BEGINNER" | "FRONTEND" | "BACKEND" | "FULLSTACK";
 type PhaseName = "Beginner" | "Intermediate" | "Advanced";
 type CoursePhase =
-  | "Beginner"
-  | "Frontend-Intermediate"
-  | "Frontend-Advanced"
-  | "Backend-Intermediate"
-  | "Backend-Advanced"
-  | "Fullstack-Intermediate"
-  | "Fullstack-Advanced";
+  | "BEGINNER"
+  | "FRONTEND-Intermediate"
+  | "FRONTEND-Advanced"
+  | "BACKEND-Intermediate"
+  | "BACKEND-Advanced"
+  | "FULLSTACK-Intermediate"
+  | "FULLSTACK-Advanced";
 
 type Subscription = { courseId: number; month: number; paid: boolean };
 
@@ -55,39 +56,51 @@ const mapSubscriptionsToAccess = (
   studentCourses: CourseName[] = [],
 ): Record<CoursePhase, Month[]> => {
   const access: Record<CoursePhase, Month[]> = {
-    Beginner: createMonths(4), // 4 months for beginner phase
-    "Frontend-Intermediate": [],
-    "Frontend-Advanced": [],
-    "Backend-Intermediate": [],
-    "Backend-Advanced": [],
-    "Fullstack-Intermediate": [],
-    "Fullstack-Advanced": [],
+    BEGINNER: createMonths(4),
+    "FRONTEND-Intermediate": [],
+    "FRONTEND-Advanced": [],
+    "BACKEND-Intermediate": [],
+    "BACKEND-Advanced": [],
+    "FULLSTACK-Intermediate": [],
+    "FULLSTACK-Advanced": [],
   };
 
   // Assign months for each specialization phase
   studentCourses.forEach((c) => {
-    if (c === "Frontend") {
-      access["Frontend-Intermediate"] = createMonths(1); // 1 months
-      access["Frontend-Advanced"] = createMonths(1); // 1 months
+    if (c === "FRONTEND") {
+      access["FRONTEND-Intermediate"] = createMonths(1);
+      access["FRONTEND-Advanced"] = createMonths(1);
     }
-    if (c === "Backend") {
-      access["Backend-Intermediate"] = createMonths(2);
-      access["Backend-Advanced"] = createMonths(1);
+
+    if (c === "BACKEND") {
+      access["BACKEND-Intermediate"] = createMonths(2);
+      access["BACKEND-Advanced"] = createMonths(1);
     }
-    if (c === "Fullstack") {
-      access["Fullstack-Intermediate"] = createMonths(3);
-      access["Fullstack-Advanced"] = createMonths(2);
+
+    if (c === "FULLSTACK") {
+      access["FULLSTACK-Intermediate"] = createMonths(3);
+      access["FULLSTACK-Advanced"] = createMonths(2);
     }
   });
 
   // Map subscriptions to access
   subscriptions.forEach((sub) => {
     const course = courses.find((c) => c.id === sub.courseId);
-    if (!course || course.title === "Beginner") return;
+    if (!course) return;
 
-    const key = `${course.title}-${course.phases[0]}` as CoursePhase;
-    if (access[key]?.[sub.month - 1])
+    if (course.title.toUpperCase() === "BEGINNER") {
+      if (access["BEGINNER"]?.[sub.month - 1]) {
+        access["BEGINNER"][sub.month - 1].paid = sub.paid;
+      }
+      return;
+    }
+
+    const key =
+      `${course.title.toUpperCase()}-${course.phases[0]}` as CoursePhase;
+
+    if (access[key]?.[sub.month - 1]) {
       access[key][sub.month - 1].paid = sub.paid;
+    }
   });
 
   return access;
@@ -97,7 +110,7 @@ const mapSubscriptionsToAccess = (
 export default function StudentManagementPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
-
+  const [loading, setLoading] = useState(true); // <-- added
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<Omit<Student, "id" | "access">>({
     username: "",
@@ -130,11 +143,25 @@ export default function StudentManagementPage() {
       console.error("Failed to load data", err);
     }
   };
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    const id = setTimeout(() => setMounted(true), 0);
 
-    const fetchData = async () => {
+    return () => clearTimeout(id); // cleanup
+  }, []);
+  useEffect(() => {
+    if (!mounted) return;
+
+    let cancelled = false;
+    const init = async () => {
+      const token = localStorage.getItem("adminToken");
+      const role = localStorage.getItem("role");
+
+      if (!token || role !== "ADMIN") {
+        console.warn("No token or not ADMIN, data might fail to load");
+      }
       try {
         const courseRes = await api.get<Course[]>("/api/admin/courses");
         const studentRes = await api.get<Student[]>("/api/admin/students");
@@ -155,15 +182,21 @@ export default function StudentManagementPage() {
         setStudents(mappedStudents);
       } catch (err) {
         console.error("Failed to load data", err);
+      } finally {
+        if (!cancelled) {
+          setLoading(false); // <-- set loading to false after data is loaded
+        }
       }
     };
 
-    fetchData();
+    init();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mounted]);
+
+  if (loading) return <p className="p-8">Loading...</p>;
 
   /* ================= HANDLERS ================= */
   const handleInputChange = (
@@ -199,19 +232,26 @@ export default function StudentManagementPage() {
 
   const handleEdit = (student: Student) => {
     setEditingId(student.id);
+
     setForm({
-      ...student,
+      username: student.username,
+      password: "",
+      name: student.name,
+      email: student.email,
+      phoneNumber: student.phoneNumber ?? "",
+      status: student.status,
       specialization: student.specialization ?? null,
     });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this student?")) return;
+  const handleDisable = async (id: number) => {
+    if (!confirm("Disable this student?")) return;
+
     try {
       await api.patch(`/api/admin/students/${id}/disable`);
       await loadData();
     } catch (err) {
-      console.error("Failed to delete student", err);
+      console.error("Failed to disable student", err);
     }
   };
 
@@ -244,13 +284,15 @@ export default function StudentManagementPage() {
 
     // Persist
     let courseId: number | null = null;
-    if (coursePhase === "Beginner") {
-      const beginnerCourse = courses.find((c) => c.title === "Beginner");
+    if (coursePhase === "BEGINNER") {
+      const beginnerCourse = courses.find(
+        (c) => c.title.toUpperCase() === "BEGINNER",
+      );
       if (!beginnerCourse) return console.error("Beginner course not found");
       courseId = beginnerCourse.id;
     } else {
       const [courseName] = coursePhase.split("-") as [CourseName];
-      const course = courses.find((c) => c.title === courseName);
+      const course = courses.find((c) => c.title.toUpperCase() === courseName);
       if (!course) return console.error("Course not found for", coursePhase);
       courseId = course.id;
     }
@@ -268,15 +310,18 @@ export default function StudentManagementPage() {
 
   /* ================= UI ================= */
   const renderCoursePhases = (student: Student) => {
-    const rows: CoursePhase[] = ["Beginner"];
+    const rows: CoursePhase[] = ["BEGINNER"];
+
     const spec = student.specialization;
 
-    if (spec === "Frontend")
-      rows.push("Frontend-Intermediate", "Frontend-Advanced");
-    if (spec === "Backend")
-      rows.push("Backend-Intermediate", "Backend-Advanced");
-    if (spec === "Fullstack")
-      rows.push("Fullstack-Intermediate", "Fullstack-Advanced");
+    if (spec === "FRONTEND")
+      rows.push("FRONTEND-Intermediate", "FRONTEND-Advanced");
+
+    if (spec === "BACKEND")
+      rows.push("BACKEND-Intermediate", "BACKEND-Advanced");
+
+    if (spec === "FULLSTACK")
+      rows.push("FULLSTACK-Intermediate", "FULLSTACK-Advanced");
 
     return rows.map((phase) => (
       <div key={phase} className="mb-3">
@@ -292,7 +337,7 @@ export default function StudentManagementPage() {
                   : "bg-gray-200 text-gray-600 hover:bg-gray-300 hover:scale-[1.05]"
               }`}
             >
-              M{i + 1}
+              {m.paid ? `M${i + 1} ✓` : `M${i + 1}`}
             </button>
           ))}
         </div>
@@ -349,36 +394,34 @@ export default function StudentManagementPage() {
             onChange={handleInputChange}
             className="bg-white/70 border border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#0B0E48]/60 transition text-[#0B0E48]"
           >
-            <option>Active</option>
-            <option>Inactive</option>
+            <option>ACTIVE</option>
+            <option>INACTIVE</option>
           </select>
           {/* Specialization checkboxes */}
           <div className="col-span-full">
             <p className="font-semibold text-white/80 mb-2">Specializations:</p>
             <div className="flex gap-4">
-              {(["Frontend", "Backend", "Fullstack"] as CourseName[]).map(
-                (c) => (
-                  <label
-                    key={c}
-                    className="flex items-center gap-1 text-white/80"
-                  >
-                    <input
-                      type="radio"
-                      name="specialization"
-                      value={c}
-                      checked={form.specialization === c}
-                      onChange={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          specialization: c,
-                        }))
-                      }
-                      className="accent-[#0B0E48]"
-                    />
-                    {c}
-                  </label>
-                ),
-              )}
+              {(["FRONTEND", "BACKEND", "FULLSTACK"] as const).map((c) => (
+                <label
+                  key={c}
+                  className="flex items-center gap-1 text-white/80"
+                >
+                  <input
+                    type="radio"
+                    name="specialization"
+                    value={c}
+                    checked={form.specialization === c}
+                    onChange={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        specialization: c,
+                      }))
+                    }
+                    className="accent-[#0B0E48]"
+                  />
+                  {c.charAt(0) + c.slice(1).toLowerCase()}
+                </label>
+              ))}
             </div>
           </div>
         </div>
@@ -438,7 +481,8 @@ export default function StudentManagementPage() {
                 <FaEdit />
               </button>
               <button
-                onClick={() => handleDelete(s.id)}
+                onClick={() => handleDisable(s.id)}
+                title="Disable Student"
                 className="text-[#0B0E48] hover:scale-110 transition"
               >
                 <FaTrash />

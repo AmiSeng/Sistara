@@ -1,7 +1,13 @@
+import { Request, Response, NextFunction } from "express";
 import { prisma } from "../prisma";
+import { AppError } from "../middleware/errorHandler";
 
 // GET ALL COURSES WITH PHASES
-export const getCourses = async (req: any, res: any) => {
+export const getCourses = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const courses = await prisma.course.findMany({
       select: {
@@ -18,7 +24,6 @@ export const getCourses = async (req: any, res: any) => {
       orderBy: { id: "asc" }
     });
 
-    // Map for frontend-friendly format
     const mapped = courses.map((course) => ({
       id: course.id,
       title: course.title,
@@ -26,9 +31,8 @@ export const getCourses = async (req: any, res: any) => {
       phases: course.phases.map((phase) => phase.name)
     }));
 
-    res.json(mapped);
-  } catch (err) {
-    console.error("Failed to fetch courses:", err);
-    res.status(500).json({ message: "Failed to fetch courses" });
+    return res.json(mapped);
+  } catch (error) {
+    next(error);
   }
 };

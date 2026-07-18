@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Footer from "../src/components/layout/Footer";
@@ -7,6 +8,7 @@ import Footer from "../src/components/layout/Footer";
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -21,36 +23,34 @@ export default function Login() {
     setError("");
 
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
 
       let data;
+
       try {
         data = await res.json();
       } catch {
         throw new Error("Invalid server response");
       }
 
+      console.log("LOGIN RESPONSE:", data);
+
       if (!res.ok) {
         setError(data.message || "Login failed");
         return;
       }
 
-      // ✅ Unified storage
-      localStorage.setItem("authToken", data.token);
-      localStorage.setItem("role", data.role);
+      console.log("TOKEN:", data.token);
 
-      // ✅ Smart redirection
-      if (data.role === "ADMIN") {
-        router.push("/admin/dashboard");
-      } else if (data.role === "STUDENT") {
-        router.push("/student/dashboard");
-      } else {
-        setError("Unauthorized role.");
-      }
+      localStorage.setItem("studentToken", data.token);
+
+      console.log("AFTER SAVE:", localStorage.getItem("studentToken"));
+
+      router.push("/student/dashboard");
     } catch (err) {
       console.error(err);
       setError("Server error. Try again later.");
@@ -94,14 +94,22 @@ export default function Login() {
             />
           </div>
 
-          <div className="w-full mb-6">
+          <div className="w-full mb-6 relative">
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 text-lg text-[#0B0E48] placeholder-gray-400 border-2 border-gray-300 rounded-xl focus:border-[#0B0E48] focus:ring-4 focus:ring-[#0B0E48]/40 focus:outline-none transition-all duration-300 shadow-inner"
+              className="w-full px-4 py-3 pr-12 text-lg text-[#0B0E48] placeholder-gray-400 border-2 border-gray-300 rounded-xl focus:border-[#0B0E48] focus:ring-4 focus:ring-[#0B0E48]/40 focus:outline-none transition-all duration-300 shadow-inner"
             />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#0B0E48]"
+            >
+              {showPassword ? <FaEyeSlash size={20} /> : <FaEye size={20} />}
+            </button>
           </div>
 
           <button
@@ -110,6 +118,20 @@ export default function Login() {
           >
             Login
           </button>
+
+          <div className="mt-6 text-center text-sm text-gray-600 space-y-2">
+            <p className="font-medium">Don’t have an account?</p>
+
+            <p>Student accounts are created by the administrator.</p>
+
+            <button
+              type="button"
+              onClick={() => router.push("/#contact")}
+              className="text-[#0B0E48] font-semibold hover:underline"
+            >
+              Contact us to request access
+            </button>
+          </div>
 
           <p className="text-center text-gray-600 mt-2 text-sm">
             Welcome back to Sistara

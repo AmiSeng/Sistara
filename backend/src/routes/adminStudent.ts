@@ -11,10 +11,16 @@ import {
 
 const router = Router();
 
+// =========================
+// STUDENT CRUD
+// =========================
 router.get("/", adminAuth, getStudents);
 router.post("/", adminAuth, createStudent);
 router.put("/:id", adminAuth, updateStudent);
 router.patch("/:id/disable", adminAuth, disableStudent);
-router.patch("/subscriptions/:userId", toggleSubscription);
+// =========================
+// MANUAL SUBSCRIPTION / PAYMENT
+// =========================
+router.patch("/subscriptions/:userId", adminAuth, toggleSubscription);
 
 export default router;

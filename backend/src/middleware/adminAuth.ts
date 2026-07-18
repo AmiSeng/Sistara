@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { prisma } from "../prisma";
+import { Role } from "@prisma/client";
 
 export interface AdminRequest extends Request {
   admin?: {
     userId: number;
-    role: "ADMIN";
+    role: Role;
   };
 }
 
@@ -28,35 +29,44 @@ export const adminAuth = async (
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
 
-    if (decoded.role !== "ADMIN" || typeof decoded.userId !== "number") {
+    const userId = Number(decoded.userId);
+
+    if (!userId || Number.isNaN(userId)) {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    const admin = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { passwordUpdatedAt: true }
+      select: {
+        id: true,
+        role: true,
+        passwordUpdatedAt: true
+      }
     });
 
-    if (!admin) {
-      return res.status(401).json({ message: "Unauthorized" });
+    if (!user || user.role !== "ADMIN") {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     // 🔥 TOKEN INVALIDATION CHECK
-    if (decoded.iat && admin.passwordUpdatedAt) {
-      if (admin.passwordUpdatedAt.getTime() / 1000 > decoded.iat) {
-        return res
-          .status(401)
-          .json({ message: "Token expired due to password change" });
+    if (decoded.iat && user.passwordUpdatedAt) {
+      const tokenIssuedAt = decoded.iat;
+      const passwordChangedAt = user.passwordUpdatedAt.getTime() / 1000;
+
+      if (passwordChangedAt > tokenIssuedAt) {
+        return res.status(401).json({
+          message: "Token expired due to password change"
+        });
       }
     }
 
     req.admin = {
-      userId: decoded.userId,
-      role: "ADMIN"
+      userId: user.id,
+      role: user.role
     };
 
     next();
-  } catch {
+  } catch (err) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 };

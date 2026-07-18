@@ -28,9 +28,14 @@ export const studentAuth = async (
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
 
-    if (decoded.role !== "STUDENT" || typeof decoded.userId !== "number")
-      return res.status(403).json({ message: "Forbidden" });
+    if (decoded.role !== "STUDENT" || typeof decoded.userId !== "number") {
+      console.log("ROLE CHECK FAILED", {
+        role: decoded.role,
+        userId: decoded.userId
+      });
 
+      return res.status(403).json({ message: "Forbidden" });
+    }
     const student = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: { passwordUpdatedAt: true }

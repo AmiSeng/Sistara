@@ -9,49 +9,97 @@ import {
   FaPlayCircle,
 } from "react-icons/fa";
 import Footer from "../../src/components/layout/Footer";
+import { api } from "../../src/lib/api";
 
-const metrics = [
-  { label: "Total Students", value: 120, icon: <FaUsers /> },
-  { label: "Total Cohorts", value: 3, icon: <FaLayerGroup /> },
-  { label: "Active Cohorts", value: 2, icon: <FaPlayCircle /> },
-  { label: "New Registrations", value: 15, icon: <FaUserPlus /> },
-];
+const metricIcons = {
+  totalStudents: <FaUsers />,
+  activeStudents: <FaUserPlus />,
+  totalCourses: <FaLayerGroup />,
+  totalLessons: <FaPlayCircle />,
+};
+
+// const metricLabels = {
+//   totalStudents: "Total Students",
+//   activeStudents: "Active Students",
+//   totalCourses: "Total Courses",
+//   totalLessons: "Total Lessons",
+// };
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
+  const [metrics, setMetrics] = useState([
+    {
+      label: "Total Students",
+      value: 0,
+      icon: metricIcons.totalStudents,
+    },
+    {
+      label: "Active Students",
+      value: 0,
+      icon: metricIcons.activeStudents,
+    },
+    {
+      label: "Total Courses",
+      value: 0,
+      icon: metricIcons.totalCourses,
+    },
+    {
+      label: "Total Lessons",
+      value: 0,
+      icon: metricIcons.totalLessons,
+    },
+  ]);
   useEffect(() => {
-    const checkAdmin = async () => {
-      const token = localStorage.getItem("adminToken");
+    const token = localStorage.getItem("adminToken");
+    const role = localStorage.getItem("role");
 
-      if (!token) {
-        router.push("/admin/login");
-        return;
-      }
-
+    if (!token || role !== "ADMIN") {
+      router.replace("/admin/login");
+      return;
+    }
+    const fetchMetrics = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/admin/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await api.get("/api/admin/dashboard");
 
-        if (!res.ok) {
-          localStorage.removeItem("adminToken");
-          router.push("/admin/login");
-        } else {
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error(err);
-        localStorage.removeItem("adminToken");
-        router.push("/admin/login");
+        setMetrics([
+          {
+            label: "Total Students",
+            value: res.data.totalStudents,
+            icon: metricIcons.totalStudents,
+          },
+          {
+            label: "Active Students",
+            value: res.data.activeStudents,
+            icon: metricIcons.activeStudents,
+          },
+          {
+            label: "Total Courses",
+            value: res.data.totalCourses,
+            icon: metricIcons.totalCourses,
+          },
+          {
+            label: "Total Lessons",
+            value: res.data.totalLessons,
+            icon: metricIcons.totalLessons,
+          },
+        ]);
+      } catch (error) {
+        console.error("Failed to load dashboard metrics:", error);
       }
     };
 
-    checkAdmin();
+    fetchMetrics();
   }, [router]);
 
-  if (loading) return <p className="p-8">Loading...</p>;
+  // Prevent UI flash before redirect
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("adminToken");
+    const role = localStorage.getItem("role");
+
+    if (!token || role !== "ADMIN") {
+      return null;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#050728] via-[#0B0E48] to-[#141866] p-8 space-y-10">
