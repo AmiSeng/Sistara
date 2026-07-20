@@ -23,7 +23,11 @@ const app = express();
 // Middleware
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://sistara.vercel.app"],
+    origin: [
+      "http://localhost:3000",
+      "https://sistaraedtech.et",
+      "https://www.sistaraedtech.et"
+    ],
     credentials: true
   })
 );

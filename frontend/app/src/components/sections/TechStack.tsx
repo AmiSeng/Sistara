@@ -45,7 +45,7 @@ export default function TechStack() {
     },
     {
       name: "React Router",
-      src: "https://logo.svgcdn.com/logos/react-router.svg",
+      src: "https://images.openai.com/static-rsc-4/SyJ5iUDYA2YoTirwpbva4bhT-zLnMNUZipCmSASvQTpD5BcbSeD7Wywh7XH858q1zsn1rv0OGiAxePSt6JgLchsiWN8aHwCUorjlW9_n2WY_a30YZV7uHdF7clrjCPu7KuYqPP_zEUpLAc7e7zaKryztHySqtniTY2kdewjilS2061L5Js3k0hbKgSKCvXZM?purpose=fullsize",
     },
     {
       name: "jQuery",
